@@ -4,8 +4,17 @@
 module Task3 where
 
 import Parser
-import Data.Char (toLower)
+import ParserCombinators
+import Control.Applicative (empty, many, some, (<|>), optional)
+import Data.Char (isSpace, isDigit, toLower)
 import Data.List (intercalate)
+
+
+skipMany :: Parser a -> Parser ()
+skipMany p = many p *> pure ()
+
+oneOf :: [Char] -> Parser Char
+oneOf cs = satisfy (`elem` cs)
 
 -- | JSON representation
 --
@@ -38,7 +47,96 @@ data JValue =
 -- Failed [PosError 0 (Unexpected '{'),PosError 1 (Unexpected '{')]
 --
 json :: Parser JValue
-json = error "TODO: define json"
+json = whitespace *> jvalue <* whitespace
+
+whitespace :: Parser ()
+whitespace = skipMany (satisfy isSpace)
+
+lexeme :: Parser a -> Parser a
+lexeme p = p <* whitespace
+
+symbol :: String -> Parser String
+symbol s = string s <* whitespace
+
+jvalue :: Parser JValue
+jvalue = jnull <|> jbool <|> jnumber <|> jstring <|> jarray <|> jobject
+
+jnull :: Parser JValue
+jnull = JNull <$ symbol "null"
+
+jbool :: Parser JValue
+jbool = (JBool True <$ symbol "true") <|> (JBool False <$ symbol "false")
+
+jnumber :: Parser JValue
+jnumber = lexeme $ do
+  sign <- optional (char '-')
+  intPart <- (char '0' *> pure "0") <|> (some digit)
+  fracPart <- optional (char '.' *> some digit)
+  hasExp <- optional (oneOf "eE")
+  expSign <- optional (oneOf "+-")
+  expDigits <- optional (some digit)
+  
+  let numStr = maybe id (:) sign $
+               intPart ++ 
+               maybe "" ('.':) fracPart ++ 
+               maybe "" (const "e") hasExp ++
+               maybe "" (:[]) expSign ++
+               maybe "" id expDigits
+  case reads numStr of
+    [(n, "")] -> pure $ JNumber n
+    _         -> empty
+  where
+    digit = satisfy isDigit
+
+jstring :: Parser JValue
+jstring = lexeme $ do
+  _ <- char '"'
+  parts <- many (normalChar <|> escapeSeq)
+  _ <- char '"'
+  pure $ JString (concat parts)
+  where
+    normalChar = do
+      c <- satisfy (\x -> x /= '"' && x /= '\\')
+      pure [c]
+    
+    escapeSeq = do
+      _ <- char '\\'
+      c <- anyChar
+      pure $ ['\\', c]
+    
+    anyChar = satisfy (const True)
+
+jarray :: Parser JValue
+jarray = JArray <$> (symbol "[" *> elements <* symbol "]")
+  where
+    elements = sepBy jvalue (symbol ",")
+
+jobject :: Parser JValue
+jobject = do
+  _ <- symbol "{"
+  ps <- sepBy pair (symbol ",")
+  _ <- symbol "}"
+  pure $ JObject ps
+  where
+    pair = do
+      k <- jstring
+      _ <- symbol ":"
+      v <- jvalue
+      case k of
+        JString s -> pure (s, v)
+        _ -> empty
+
+readHex :: String -> Int
+readHex = foldl (\acc c -> acc * 16 + digitToInt c) 0
+  where
+    digitToInt c
+      | c >= '0' && c <= '9' = fromEnum c - fromEnum '0'
+      | c >= 'a' && c <= 'f' = fromEnum c - fromEnum 'a' + 10
+      | c >= 'A' && c <= 'F' = fromEnum c - fromEnum 'A' + 10
+      | otherwise = 0
+
+sepBy :: Parser a -> Parser sep -> Parser [a]
+sepBy p sep = (:) <$> p <*> many (sep *> p) <|> pure []
 
 -- * Rendering helpers
 

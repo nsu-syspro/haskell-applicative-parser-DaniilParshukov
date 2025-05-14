@@ -17,7 +17,7 @@ import Control.Applicative
 -- Failed [Position 0 (Unexpected 'a')]
 --
 char :: Char -> Parser Char
-char = error "TODO: define char"
+char c = satisfy (== c)
 
 -- | Parses given string
 --
@@ -29,7 +29,7 @@ char = error "TODO: define char"
 -- Failed [Position 0 (Unexpected 'a')]
 --
 string :: String -> Parser String
-string = error "TODO: define string"
+string = traverse char
 
 -- | Skips zero or more space characters
 --
@@ -43,7 +43,8 @@ string = error "TODO: define string"
 -- Parsed "bar" (Position 3 "")
 --
 spaces :: Parser ()
-spaces = error "TODO: define spaces"
+spaces = many (satisfy isSpace) *> pure ()
+  where isSpace c = c == ' ' || c == '\t' || c == '\n' || c == '\r'
 
 -- | Tries to consecutively apply each of given list of parsers until one succeeds.
 -- Returns the *first* succeeding parser as result or 'empty' if all of them failed.
@@ -58,7 +59,7 @@ spaces = error "TODO: define spaces"
 -- Parsed "ba" (Position 2 "r")
 --
 choice :: (Foldable t, Alternative f) => t (f a) -> f a
-choice = error "TODO: define choice"
+choice = foldr (<|>) empty
 
 -- Discover and implement more useful parser combinators below
 --

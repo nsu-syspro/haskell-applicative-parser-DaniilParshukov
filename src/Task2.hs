@@ -4,6 +4,9 @@
 module Task2 where
 
 import Parser
+import ParserCombinators
+import Control.Applicative (optional, empty, some, (<|>))
+import Data.Char (isDigit)
 
 -- | Date representation
 --
@@ -59,4 +62,83 @@ newtype Year  = Year  Int deriving (Show, Eq)
 -- Failed [PosError 2 (Unexpected '/'),PosError 0 (Unexpected '1')]
 --
 date :: Parser Date
-date = error "TODO: define date"
+date = choice [dotFormat, hyphenFormat, usFormat]
+
+nonZeroDigit :: Parser Char
+nonZeroDigit = satisfy (\c -> c >= '1' && c <= '9')
+
+digit :: Parser Char
+digit = satisfy isDigit
+
+number :: Parser Int
+number = read <$> some digit
+
+day :: Parser Int
+day = choice [
+    string "0" *> (read . pure <$> nonZeroDigit),
+    string "1" *> (read . ("1"++) . pure <$> digit),
+    string "2" *> (read . ("2"++) . pure <$> digit),
+    string "30" *> pure 30,
+    string "31" *> pure 31
+  ]
+
+usDay :: Parser Int
+usDay = do
+  firstDigit <- nonZeroDigit
+  
+  mbSecondDigit <- optional digit
+  
+  let numStr = case mbSecondDigit of
+        Nothing -> [firstDigit]
+        Just d -> [firstDigit, d]
+      
+      dayNum = read numStr
+
+  if dayNum >= 1 && dayNum <= 31
+    then return dayNum
+    else empty
+
+
+month :: Parser Int
+month = choice [
+    string "0" *> (read . pure <$> nonZeroDigit),
+    string "10" *> pure 10,
+    string "11" *> pure 11,
+    string "12" *> pure 12
+  ]
+
+monthName :: Parser Int
+monthName = choice [
+    string "Jan" *> pure 1,
+    string "Feb" *> pure 2,
+    string "Mar" *> pure 3,
+    string "Apr" *> pure 4,
+    string "May" *> pure 5,
+    string "Jun" *> pure 6,
+    string "Jul" *> pure 7,
+    string "Aug" *> pure 8,
+    string "Sep" *> pure 9,
+    string "Oct" *> pure 10,
+    string "Nov" *> pure 11,
+    string "Dec" *> pure 12
+  ]
+
+year :: Parser Int
+year = read <$> (string "0" <|> some digit)
+
+dotFormat :: Parser Date
+dotFormat = Date <$> (Day <$> day) <* char '.' 
+                  <*> (Month <$> month) <* char '.' 
+                  <*> (Year <$> year)
+
+hyphenFormat :: Parser Date
+hyphenFormat = Date <$> (Day <$> day) <* char '-' 
+                     <*> (Month <$> month) <* char '-' 
+                     <*> (Year <$> year)
+
+usFormat :: Parser Date
+usFormat = 
+  (\m d y -> Date d (Month m) y)
+    <$> monthName <* char ' '
+    <*> (Day <$> usDay) <* char ' '
+    <*> (Year <$> year)
